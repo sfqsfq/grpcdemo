@@ -1,0 +1,19 @@
+[req]
+prompt = no
+distinguished_name = dn
+req_extensions = ext
+
+[dn]
+CN = client.sfq.me
+emailAddress = 337216147@qq.com
+O = ABC
+L = Pudong
+ST = Shanghai
+C = CN
+
+[ext]
+subjectAltName = @alt_names
+
+[alt_names]
+DNS.1 = *.client.sfq.me
+DNS.2 = client.sfq.me

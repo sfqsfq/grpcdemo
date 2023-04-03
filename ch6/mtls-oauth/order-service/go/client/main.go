@@ -5,8 +5,10 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	pb "github.com/sfqsfq/ch5/deadline/order-service-gen"
+	"golang.org/x/oauth2"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/oauth"
 	"google.golang.org/grpc/status"
 	"io"
 	"log"
@@ -21,7 +23,18 @@ const (
 	keyFile  = "certs/client.sfq.me/client.sfq.me.key"
 )
 
+type tokenSource struct{ token *oauth2.Token }
+
+func (t *tokenSource) Token() (*oauth2.Token, error) {
+	return t.token, nil
+}
+
 func main() {
+	// oauth
+	auth := oauth.TokenSource{
+		TokenSource: &tokenSource{&oauth2.Token{AccessToken: "some-secret-token",
+			TokenType: "Bearer"}},
+	}
 	// 密钥证书
 	cert, err := tls.LoadX509KeyPair(crtFile, keyFile)
 	if err != nil {
@@ -48,6 +61,8 @@ func main() {
 				RootCAs: certPool,
 			},
 		)),
+		// 凭据
+		grpc.WithPerRPCCredentials(auth),
 	}
 	// Setting up a connection to the server.
 	conn, err := grpc.Dial(address, opts...)

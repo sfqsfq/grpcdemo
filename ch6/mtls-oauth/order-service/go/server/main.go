@@ -4,7 +4,10 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 	"io"
 	"log"
 	"net"
@@ -19,12 +22,14 @@ import (
 	"google.golang.org/grpc/reflection"
 )
 
-const (
-	port           = ":50051"
-	orderBatchSize = 3
-	crtFile        = "certs/server.sfq.me/server.sfq.me.crt"
-	keyFile        = "certs/server.sfq.me/server.sfq.me.key"
-	caFile         = "certs/ca/ca.crt"
+var (
+	port               = ":50051"
+	orderBatchSize     = 3
+	crtFile            = "certs/server.sfq.me/server.sfq.me.crt"
+	keyFile            = "certs/server.sfq.me/server.sfq.me.key"
+	caFile             = "certs/ca/ca.crt"
+	errMissingMetadata = status.Errorf(codes.InvalidArgument, "missing metadata")
+	errInvalidToken    = status.Errorf(codes.Unauthenticated, "invalid token")
 )
 
 var orderMap = make(map[string]pb.Order)
@@ -180,6 +185,7 @@ func main() {
 			// 客户端 ca
 			ClientCAs: certPool,
 		})),
+		grpc.UnaryInterceptor(ensureValidToken),
 	}
 	initSampleData()
 	lis, err := net.Listen("tcp", port)
@@ -201,4 +207,33 @@ func initSampleData() {
 	orderMap["104"] = pb.Order{Id: "104", Items: []string{"Google Home Mini", "Google Nest Hub"}, Destination: "Mountain View, CA", Price: 400.00}
 	orderMap["105"] = pb.Order{Id: "105", Items: []string{"Amazon Echo"}, Destination: "San Jose, CA", Price: 30.00}
 	orderMap["106"] = pb.Order{Id: "106", Items: []string{"Amazon Echo", "Apple iPhone XS"}, Destination: "Mountain View, CA", Price: 30.00}
+}
+
+func valid(authorization []string) bool {
+	if len(authorization) < 1 {
+		return false
+	}
+	token := strings.TrimPrefix(authorization[0], "Bearer ")
+	// Perform the token validation here. For the sake of this example, the code
+	// here forgoes any of the usual OAuth2 token validation and instead checks
+	// for a token matching an arbitrary string.
+	return token == "some-secret-token"
+}
+
+// ensureValidToken ensures a valid token exists within a request's metadata. If
+// the token is missing or invalid, the interceptor blocks execution of the
+// handler and returns an error. Otherwise, the interceptor invokes the unary
+// handler.
+func ensureValidToken(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return nil, errMissingMetadata
+	}
+	// The keys within metadata.MD are normalized to lowercase.
+	// See: https://godoc.org/google.golang.org/grpc/metadata#New
+	if !valid(md["authorization"]) {
+		return nil, errInvalidToken
+	}
+	// Continue execution of handler after ensuring a valid token.
+	return handler(ctx, req)
 }

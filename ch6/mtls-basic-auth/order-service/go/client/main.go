@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	pb "github.com/sfqsfq/ch5/deadline/order-service-gen"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -37,6 +38,11 @@ func main() {
 		log.Fatalf("failed to append ca certs")
 	}
 
+	auth := basicAuth{
+		username: "admin",
+		password: "admin",
+	}
+
 	opts := []grpc.DialOption{
 		grpc.WithTransportCredentials(credentials.NewTLS(
 			&tls.Config{
@@ -48,6 +54,8 @@ func main() {
 				RootCAs: certPool,
 			},
 		)),
+		// 凭据设置
+		grpc.WithPerRPCCredentials(auth),
 	}
 	// Setting up a connection to the server.
 	conn, err := grpc.Dial(address, opts...)
@@ -153,4 +161,21 @@ func asncClientBidirectionalRPC(streamProcOrder pb.OrderManagement_ProcessOrders
 		}
 	}
 	c <- true
+}
+
+type basicAuth struct {
+	username string
+	password string
+}
+
+func (b basicAuth) GetRequestMetadata(ctx context.Context, in ...string) (map[string]string, error) {
+	auth := b.username + ":" + b.password
+	enc := base64.StdEncoding.EncodeToString([]byte(auth))
+	return map[string]string{
+		"authorization": "Basic " + enc,
+	}, nil
+}
+
+func (b basicAuth) RequireTransportSecurity() bool {
+	return true
 }
